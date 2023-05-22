@@ -41,7 +41,6 @@ class _TemplateSearchState extends State<TemplateSearch> {
   Set<Marker> _markers = {}; // Add this line
 
   @override
-  @override
   void initState() {
     super.initState();
     _getUserLocation();
@@ -74,17 +73,6 @@ class _TemplateSearchState extends State<TemplateSearch> {
     }
   }
 
-  Future<void> _getCurrentLocation() async {
-    try {
-      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      setState(() {
-        _userLocation = LatLng(position.latitude, position.longitude);
-      });
-    } catch (e) {
-      print(e);
-    }
-  }
-
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
 
@@ -97,16 +85,55 @@ class _TemplateSearchState extends State<TemplateSearch> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        _buildGoogleMap(),
-        _buildActivityCard(),
-      ],
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white.withOpacity(0.5),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () {
+            // Handle back button press
+          },
+        ),
+        title: const Text(
+          'Search',
+          style: TextStyle(color: Colors.black),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              // Handle filter button press
+            },
+            child: const Text(
+              'Filter',
+              style: TextStyle(color: Colors.black),
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.5,
+            child: _buildGoogleMap(),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.35,
+              child: _buildActivityCard(),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildGoogleMap() {
     return GoogleMap(
+      zoomControlsEnabled: false,
+      rotateGesturesEnabled: false,
+      scrollGesturesEnabled: false,
       onMapCreated: _onMapCreated,
       initialCameraPosition: CameraPosition(
         target: _userLocation ?? const LatLng(0, 0),
@@ -128,43 +155,40 @@ class _TemplateSearchState extends State<TemplateSearch> {
       final activity = widget.activities[0];
       return LayoutBuilder(
         builder: (context, constraints) {
-          return Align(
-            alignment: Alignment.bottomCenter,
-            child: GestureDetector(
-              onPanUpdate: (details) {
-                _swipePosition.value += Offset(details.delta.dx, 0);
+          return GestureDetector(
+            onPanUpdate: (details) {
+              _swipePosition.value += Offset(details.delta.dx, 0);
+            },
+            onPanEnd: (_) {
+              _swipeComplete(constraints);
+            },
+            child: ValueListenableBuilder<Offset>(
+              valueListenable: _swipePosition,
+              builder: (context, value, child) {
+                return Transform.translate(
+                  offset: value,
+                  child: ActivityCard(
+                    activity: activity,
+                    cardHeight: constraints.maxHeight,
+                    onAccept: (activityId) {
+                      print('onAccept');
+                      final activity = widget.activities.firstWhere(
+                        (activity) => activity.activityId == activityId,
+                      );
+                      widget.onAccept(activityId);
+                      _onActivitySelect(activity);
+                    },
+                    onReject: (activityId) {
+                      print('onReject');
+                      final activity = widget.activities.firstWhere(
+                        (activity) => activity.activityId == activityId,
+                      );
+                      widget.onReject(activityId);
+                      _onActivitySelect(activity);
+                    },
+                  ),
+                );
               },
-              onPanEnd: (_) {
-                _swipeComplete(constraints);
-              },
-              child: ValueListenableBuilder<Offset>(
-                valueListenable: _swipePosition,
-                builder: (context, value, child) {
-                  return Transform.translate(
-                    offset: value,
-                    child: ActivityCard(
-                      activity: activity,
-                      cardHeight: constraints.maxHeight * 0.35,
-                      onAccept: (activityId) {
-                        print('onAccept');
-                        final activity = widget.activities.firstWhere(
-                          (activity) => activity.activityId == activityId,
-                        );
-                        widget.onAccept(activityId);
-                        _onActivitySelect(activity);
-                      },
-                      onReject: (activityId) {
-                        print('onReject');
-                        final activity = widget.activities.firstWhere(
-                          (activity) => activity.activityId == activityId,
-                        );
-                        widget.onReject(activityId);
-                        _onActivitySelect(activity);
-                      },
-                    ),
-                  );
-                },
-              ),
             ),
           );
         },
@@ -222,10 +246,25 @@ class _TemplateSearchState extends State<TemplateSearch> {
         ),
       );
 
-      // Animate the camera to fit both user and activity locations
-      _mapController.animateCamera(
-        CameraUpdate.newLatLngBounds(bounds, 100.0),
+      // Calculate the distance between user and activity locations
+      double distance = Geolocator.distanceBetween(
+        _userLocation!.latitude,
+        _userLocation!.longitude,
+        _activityLocation!.latitude,
+        _activityLocation!.longitude,
       );
+
+      // If the distance is less than a certain threshold, adjust the zoom level
+      if (distance < 100) {
+        _mapController.animateCamera(
+          CameraUpdate.newLatLngZoom(_activityLocation!, 15.0),
+        );
+      } else {
+        // Animate the camera to fit both user and activity locations
+        _mapController.animateCamera(
+          CameraUpdate.newLatLngBounds(bounds, 100.0),
+        );
+      }
     }
   }
 }
